@@ -10,14 +10,17 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Setup directories
-const UPLOADS_DIR = path.join(__dirname, 'uploads');
+// Setup directories for Render Persistent Disk Support
+// A Persistent Disk should be mounted (e.g., to /var/data) to survive restarts
+const BASE_DIR = process.env.DATA_DIR || __dirname;
+
+const UPLOADS_DIR = path.join(BASE_DIR, 'uploads');
 const RESUMES_DIR = path.join(UPLOADS_DIR, 'resumes');
 const GALLERY_DIR = path.join(UPLOADS_DIR, 'gallery');
 
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
-if (!fs.existsSync(RESUMES_DIR)) fs.mkdirSync(RESUMES_DIR);
-if (!fs.existsSync(GALLERY_DIR)) fs.mkdirSync(GALLERY_DIR);
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+if (!fs.existsSync(RESUMES_DIR)) fs.mkdirSync(RESUMES_DIR, { recursive: true });
+if (!fs.existsSync(GALLERY_DIR)) fs.mkdirSync(GALLERY_DIR, { recursive: true });
 
 // Middleware
 app.use(cors());
@@ -38,7 +41,7 @@ app.use((req, res, next) => {
 });
 
 // SQLite Database Setup
-const DB_PATH = path.join(__dirname, 'database.sqlite');
+const DB_PATH = path.join(BASE_DIR, 'database.sqlite');
 const db = new sqlite3.Database(DB_PATH, (err) => {
   if (err) {
     console.error('[SQLite Connection Error]:', err.message);
@@ -555,7 +558,7 @@ app.delete('/api/gallery/:id', authenticateAdmin, (req, res, next) => {
       }
 
       if (row.url.startsWith('/uploads/')) {
-        const filePath = path.join(__dirname, row.url);
+        const filePath = path.join(BASE_DIR, row.url);
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
           console.log(`[File Deleted]: Removed file on disk at: ${filePath}`);
@@ -654,7 +657,7 @@ app.delete('/api/careers/:id', authenticateAdmin, (req, res, next) => {
       }
 
       if (row && row.resume_path) {
-        const filePath = path.join(__dirname, row.resume_path);
+        const filePath = path.join(BASE_DIR, row.resume_path);
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
           console.log(`[File Deleted]: Removed resume file on disk at: ${filePath}`);
@@ -744,10 +747,27 @@ app.delete('/api/contact/:id', authenticateAdmin, (req, res, next) => {
   });
 });
 
-// Serve frontend dist statically in production
-app.use(express.static(path.join(__dirname, '../dist')));
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../dist/index.html'));
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'SNT Backend Running'
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.json({
+    success: true,
+    status: 'running'
+  });
+});
+
+// 404 Catch-All for undefined routes
+app.use('*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'API endpoint not found',
+    error: 'Not Found'
+  });
 });
 
 // Centralized Backend JSON Error Handler
